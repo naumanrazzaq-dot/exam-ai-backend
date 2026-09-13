@@ -21,54 +21,49 @@ app.add_middleware(
 def call_gemini(clean_query: str) -> str:
     raw_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not raw_key:
-        raise ValueError("GEMINI_API_KEY is not set in Vercel environment variables.")
+        return "Error: GEMINI_API_KEY environment variable is empty on Vercel."
 
-    # Get primary key without spaces
     api_key = raw_key.split(",")[0].strip()
 
     prompt = (
-        f"You are an expert entrance exam AI tutor for MDCAT and ECAT students.\n"
-        f"The student asked: '{clean_query}'.\n\n"
-        "Provide a high-yield, structured conceptual answer.\n"
-        "Include core definitions, governing formulas/principles, and crucial exam trap points.\n"
-        "Do not include conversational greetings. Answer directly using clear markdown."
+        f"You are an expert AI tutor for entrance exams (MDCAT & ECAT).\n"
+        f"Student question: '{clean_query}'.\n\n"
+        "Provide a comprehensive, accurate academic answer tailored for entrance exams.\n"
+        "Include core definitions, key formulas/reactions, and high-yield exam traps.\n"
+        "Do not include filler greetings."
     )
 
     payload = json.dumps({
         "contents": [{"parts": [{"text": prompt}]}]
     }).encode("utf-8")
 
-    # List of valid modern endpoint variations
-    endpoints = [
-        f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={urllib.parse.quote(api_key)}",
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={urllib.parse.quote(api_key)}",
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={urllib.parse.quote(api_key)}",
-        f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={urllib.parse.quote(api_key)}"
+    # Working Google Gemini model identifiers
+    models_to_test = [
+        "gemini-2.0-flash",
+        "gemini-1.5-flash-8b",
+        "gemini-2.5-flash",
+        "gemini-1.5-pro"
     ]
 
-    last_error = ""
-    for url in endpoints:
+    errors = []
+    for model in models_to_test:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={urllib.parse.quote(api_key)}"
         try:
             req = urllib.request.Request(
                 url,
                 data=payload,
-                headers={
-                    "Content-Type": "application/json",
-                    "x-goog-api-key": api_key
-                }
+                headers={"Content-Type": "application/json"}
             )
-            with urllib.request.urlopen(req, timeout=12) as resp:
+            with urllib.request.urlopen(req, timeout=10) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 return data["candidates"][0]["content"]["parts"][0]["text"]
         except urllib.error.HTTPError as he:
-            err_text = he.read().decode("utf-8")
-            last_error = f"Status {he.code}: {err_text}"
-            continue
+            err_body = he.read().decode("utf-8")
+            errors.append(f"[{model} -> {he.code}: {err_body}]")
         except Exception as ex:
-            last_error = str(ex)
-            continue
+            errors.append(f"[{model} -> {str(ex)}]")
 
-    raise RuntimeError(last_error)
+    return "### API Execution Diagnostic\n\nFailed to get response:\n\n" + "\n\n".join(errors)
 
 class QueryRequest(BaseModel):
     topic: str
@@ -107,18 +102,8 @@ def ask_tutor(req: QueryRequest):
     elif "Question:" in clean_q:
         clean_q = clean_q.split("Question:")[1].split(".")[0].strip()
 
-    try:
-        answer = call_gemini(clean_q)
-    except Exception as e:
-        print("Live API failure:", str(e))
-        answer = (
-            f"### Conceptual Review: {clean_q.title()}\n\n"
-            f"**1. Core Principle for {req.category}:**\n"
-            f"In competitive exam curriculum, **{clean_q}** establishes foundational theoretical properties and mathematical proportionalities.\n\n"
-            f"**2. High-Yield Exam Takeaway:**\n"
-            f"* Ensure conversion of variables to proper SI base units before computation.\n"
-            f"* Test limiting dependencies to rule out incorrect options quickly."
-        )
+    # Direct execution — no synthetic fallback masking failures
+    answer = call_gemini(clean_q)
 
     return {
         "status": "success",
