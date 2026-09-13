@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 from mangum import Mangum
 
-app = FastAPI(title="MDCAT & ECAT AI Backend API", redirectslashes=False)
+app = FastAPI(title="MDCAT & ECAT AI Backend API", redirect_slashes=False)
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,84 +19,46 @@ app.add_middleware(
 )
 
 def call_gemini(clean_query: str) -> str:
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        raise ValueError("Environment variable GEMINI_API_KEY Vercel par set nahi hai.")
+    # Multiple keys comma-separated ya fallback keys
+    raw_keys = os.getenv("GEMINI_API_KEY", "").strip()
+    if not raw_keys:
+        raise ValueError("Missing GEMINI_API_KEY")
+    
+    # Comma-separated keys support agar aap ek se zyada keys dalein
+    api_keys = [k.strip() for k in raw_keys.split(",") if k.strip()]
 
     prompt = (
-        f"You are an expert tutor for entrance exams (MDCAT and ECAT).\n"
-        f"Explain: '{clean_query}' thoroughly.\n"
-        "Provide direct definitions, formulas or mechanisms, and high-yield exam traps.\n"
-        "No conversational greetings."
+        f"You are an expert entrance exam AI tutor for MDCAT and ECAT preparation.\n"
+        f"The student asked: '{clean_query}'.\n\n"
+        "Provide a clear, accurate, high-yield conceptual breakdown for entrance test students.\n"
+        "Include concise core definitions, governing formulas/principles, and critical trap points.\n"
+        "Do not include conversational greetings. Answer directly with structured markdown."
     )
-    
-    payload = json.dumps({
-        "contents": [{"parts": [{"text": prompt}]}]
-    }).encode("utf-8")
+    payload = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
 
-    # Try both standard endpoints
-    models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-pro"]
-    last_error = ""
+    models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
+    last_err = None
 
-    for model in models:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-        try:
-            req = urllib.request.Request(
-                url,
-                data=payload,
-                headers={
-                    "Content-Type": "application/json",
-                    "x-goog-api-key": api_key
-                }
-            )
-            with urllib.request.urlopen(req, timeout=12) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                return data["candidates"][0]["content"]["parts"][0]["text"]
-        except urllib.error.HTTPError as he:
-            err_body = he.read().decode("utf-8")
-            last_error = f"Google API Error ({he.code}): {err_body}"
-        except Exception as ex:
-            last_error = str(ex)
+    for key in api_keys:
+        for model in models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            try:
+                req = urllib.request.Request(
+                    url,
+                    data=payload,
+                    headers={
+                        "Content-Type": "application/json",
+                        "x-goog-api-key": key
+                    }
+                )
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    return data["candidates"][0]["content"]["parts"][0]["text"]
+            except Exception as e:
+                last_err = e
+                continue  # Rate limit ya error aate hi agli model/key par jump karega
 
-    raise RuntimeError(last_error)
-
-def generate_topic_specific_fallback(query: str, category: str) -> str:
-    q = query.lower()
-
-    if "nuclear" in q:
-        return (
-            "### Nuclear Physics & Radioactivity\n\n"
-            "**1. Core Definition:**\n"
-            "Nuclear physics deals with the constituents, structure, behavior, and interactions of atomic nuclei.\n\n"
-            "**2. Governing Principles & Equations:**\n"
-            "* **Mass Defect & Binding Energy:** $\\Delta E = (\\Delta m) c^2$\n"
-            "* **Radioactive Decay Law:** $N = N_0 e^{-\\lambda t}$\n"
-            "* **Half-Life Formula:** $T_{1/2} = \\frac{\\ln 2}{\\lambda} \\approx \\frac{0.693}{\\lambda}$\n\n"
-            "**3. MDCAT/ECAT Traps:**\n"
-            "* $\\alpha$-decay decreases atomic number $Z$ by 2 and mass number $A$ by 4.\n"
-            "* $\\beta^-$-decay increases $Z$ by 1, leaving $A$ unchanged."
-        )
-
-    if "cell" in q:
-        return (
-            "### Cell Biology: The Unit of Life\n\n"
-            "**1. Core Definition:**\n"
-            "The cell is the basic structural and functional unit of all living organisms.\n\n"
-            "**2. Key Structural Components:**\n"
-            "* **Prokaryotic vs Eukaryotic:** Prokaryotes lack membrane-bound organelles and possess 70S ribosomes, whereas eukaryotes have 80S ribosomes and compartmentalized organelles.\n"
-            "* **Mitochondria:** Double-membraned organelle generating ATP via oxidative phosphorylation.\n\n"
-            "**3. MDCAT Exam Tip:**\n"
-            "* Plant cell walls consist of cellulose, fungal walls of chitin, and bacterial walls of peptidoglycan."
-        )
-
-    return (
-        f"### Conceptual Analysis: {query.title()}\n\n"
-        f"**1. High-Yield Definition for {category}:**\n"
-        f"In entrance test curriculum, **{query}** represents fundamental scientific principles evaluated through conceptual applications and quantitative dependencies.\n\n"
-        f"**2. Key Exam Strategy:**\n"
-        f"* Verify units, boundary conditions, and direct/inverse proportionalities.\n"
-        f"* Eliminate distractor options that violate conservation laws or dimensional balance."
-    )
+    raise RuntimeError(f"All API attempts exhausted: {last_err}")
 
 class QueryRequest(BaseModel):
     topic: str
@@ -138,9 +100,16 @@ def ask_tutor(req: QueryRequest):
     try:
         answer = call_gemini(clean_q)
     except Exception as e:
-        # Fallback ke sath actual error bhi log/inspect hoga
-        print("Backend Error:", str(e))
-        answer = generate_topic_specific_fallback(clean_q, req.category)
+        print("Gemini Exhausted Error:", str(e))
+        # Direct educational explanation if rate limits block momentarily
+        answer = (
+            f"### High-Yield Concept: {clean_q.title()}\n\n"
+            f"**1. Examination Principle:**\n"
+            f"In {req.category} testing, **{clean_q}** requires evaluation of primary scientific principles, governing parameters, and dimensional dependencies.\n\n"
+            f"**2. Problem Solving Traps:**\n"
+            f"* Always convert non-standard units to SI base units before calculation.\n"
+            f"* Identify direct and inverse relationships to discard distractor options immediately."
+        )
 
     return {
         "status": "success",
