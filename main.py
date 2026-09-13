@@ -21,49 +21,34 @@ app.add_middleware(
 def call_gemini(clean_query: str) -> str:
     raw_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not raw_key:
-        return "Error: GEMINI_API_KEY environment variable is empty on Vercel."
+        return "Error: GEMINI_API_KEY environment variable is missing on Vercel."
 
     api_key = raw_key.split(",")[0].strip()
 
     prompt = (
-        f"You are an expert AI tutor for entrance exams (MDCAT & ECAT).\n"
+        f"You are an expert tutor for entrance exams (MDCAT and ECAT).\n"
         f"Student question: '{clean_query}'.\n\n"
-        "Provide a comprehensive, accurate academic answer tailored for entrance exams.\n"
-        "Include core definitions, key formulas/reactions, and high-yield exam traps.\n"
-        "Do not include filler greetings."
+        "Provide a high-yield, accurate conceptual answer tailored for entrance exams.\n"
+        "Include core definitions, governing equations or biological mechanisms, and critical exam pitfalls.\n"
+        "Do not include conversational greetings. Answer directly using structured markdown."
     )
 
     payload = json.dumps({
         "contents": [{"parts": [{"text": prompt}]}]
     }).encode("utf-8")
 
-    # Working Google Gemini model identifiers
-    models_to_test = [
-        "gemini-2.0-flash",
-        "gemini-1.5-flash-8b",
-        "gemini-2.5-flash",
-        "gemini-1.5-pro"
-    ]
+    # Target the active Gemini 3.6 Flash endpoint
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={urllib.parse.quote(api_key)}"
 
-    errors = []
-    for model in models_to_test:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={urllib.parse.quote(api_key)}"
-        try:
-            req = urllib.request.Request(
-                url,
-                data=payload,
-                headers={"Content-Type": "application/json"}
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                return data["candidates"][0]["content"]["parts"][0]["text"]
-        except urllib.error.HTTPError as he:
-            err_body = he.read().decode("utf-8")
-            errors.append(f"[{model} -> {he.code}: {err_body}]")
-        except Exception as ex:
-            errors.append(f"[{model} -> {str(ex)}]")
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={"Content-Type": "application/json"}
+    )
 
-    return "### API Execution Diagnostic\n\nFailed to get response:\n\n" + "\n\n".join(errors)
+    with urllib.request.urlopen(req, timeout=12) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+        return data["candidates"][0]["content"]["parts"][0]["text"]
 
 class QueryRequest(BaseModel):
     topic: str
@@ -102,8 +87,10 @@ def ask_tutor(req: QueryRequest):
     elif "Question:" in clean_q:
         clean_q = clean_q.split("Question:")[1].split(".")[0].strip()
 
-    # Direct execution — no synthetic fallback masking failures
-    answer = call_gemini(clean_q)
+    try:
+        answer = call_gemini(clean_q)
+    except Exception as e:
+        answer = f"Gemini API Error: {str(e)}"
 
     return {
         "status": "success",
