@@ -1,7 +1,7 @@
 import os
 import hashlib
 import json
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -18,20 +18,14 @@ supabase = create_client(sb_url, sb_key)
 api_key = os.getenv("GEMINI_API_KEY", "AQ.Ab8RN6JKE0BWQySBI1TH7YhmhJz-0MyttsZspgO0xVVOIFDsJA")
 gemini_client = genai.Client(api_key=api_key)
 
-app = FastAPI(title="MDCAT & ECAT AI Backend API")
-
-origins = [
-    "https://crackitai-sepia.vercel.app",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
+# redirect_slashes=False prevents automatic 307 redirects on preflight requests
+app = FastAPI(title="MDCAT & ECAT AI Backend API", redirect_slashes=False)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_origin_regex=r"https://.*\.vercel\.app",
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -67,7 +61,22 @@ class QuizRequest(BaseModel):
 def home():
     return {"status": "online", "message": "Backend is running 24/7"}
 
+# Explicit OPTIONS handler to immediately satisfy CORS preflight
+@app.options("/ask")
+@app.options("/ask/")
+def options_ask():
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
+# Handlers for both /ask and /ask/
 @app.post("/ask")
+@app.post("/ask/")
 def ask_tutor(req: QueryRequest):
     user_query = req.question or req.topic
     context = get_context(req.topic, req.category)
@@ -80,7 +89,6 @@ def ask_tutor(req: QueryRequest):
         "Answer:"
     )
     
-    # Pure text generation without tool/AFC interference
     res = gemini_client.models.generate_content(
         model="gemini-2.5-flash",
         contents=prompt,
@@ -96,6 +104,7 @@ def ask_tutor(req: QueryRequest):
     }
 
 @app.post("/quiz")
+@app.post("/quiz/")
 def generate_quiz(req: QuizRequest):
     context = get_context(req.topic, req.category)
     prompt = (
