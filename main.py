@@ -1,15 +1,20 @@
+import os
+import hashlib
+import json
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional
 from google import genai
 from supabase import create_client
-import hashlib, json
 
-sb_url = "https://iiussffgjberpcyfyigf.supabase.co"
-sb_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlpdXNzZmZnamJlcnBjeWZ5aWdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMzAyOTQsImV4cCI6MjEwNDYwNjI5NH0.UHvSX8zOEj27An3ds4WsBkmxSV16ynjuvfGCNqM92D8"
+sb_url = os.getenv("SUPABASE_URL", "https://iiussffgjberpcyfyigf.supabase.co")
+sb_key = os.getenv("SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlpdXNzZmZnamJlcnBjeWZ5aWdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMzAyOTQsImV4cCI6MjEwNDYwNjI5NH0.UHvSX8zOEj27An3ds4WsBkmxSV16ynjuvfGCNqM92D8")
 
 supabase = create_client(sb_url, sb_key)
-gemini_client = genai.Client(api_key="AQ.Ab8RN6JKE0BWQySBI1TH7YhmhJz-0MyttsZspgO0xVVOIFDsJA")
+
+api_key = os.getenv("GEMINI_API_KEY", "AQ.Ab8RN6JKE0BWQySBI1TH7YhmhJz-0MyttsZspgO0xVVOIFDsJA")
+gemini_client = genai.Client(api_key=api_key)
 
 app = FastAPI(title="MDCAT & ECAT AI Backend API")
 
@@ -41,6 +46,7 @@ def get_context(topic: str, category: str):
 
 class QueryRequest(BaseModel):
     topic: str
+    question: Optional[str] = None
     category: str = "MDCAT"
 
 class QuizRequest(BaseModel):
@@ -54,20 +60,21 @@ def home():
 
 @app.post("/ask")
 async def ask_tutor(req: QueryRequest):
+    user_query = req.question or req.topic
     context = get_context(req.topic, req.category)
     prompt = (
         f"You are an expert entrance exam tutor for {req.category}.\n"
-        f"The student asked: '{req.topic}'. Automatically correct any typos.\n"
+        f"The student asked: '{user_query}'. Automatically correct any typos.\n"
         "Provide a high-yield, structured conceptual explanation for exam preparation.\n\n"
         f"Context:\n{context}\n\n"
-        f"Question:\n{req.topic}\n\n"
+        f"Question:\n{user_query}\n\n"
         "Answer:"
     )
-    res = gemini_client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
+    res = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
     return {
         "status": "success",
         "category": req.category,
-        "query": req.topic,
+        "query": user_query,
         "answer": res.text
     }
 
@@ -91,7 +98,7 @@ async def generate_quiz(req: QuizRequest):
         "]\n\n"
         f"Context:\n{context}"
     )
-    res = gemini_client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
+    res = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
     raw = res.text.strip()
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[1].rsplit("\n", 1)[0]
