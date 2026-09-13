@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 from mangum import Mangum
 
-app = FastAPI(title="MDCAT & ECAT AI Backend API", redirect_slashes=False)
+app = FastAPI(title="MDCAT & ECAT AI Backend API", redirectslashes=False)
 
 app.add_middleware(
     CORSMiddleware,
@@ -21,60 +21,142 @@ app.add_middleware(
 def call_gemini(clean_query: str) -> str:
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
-        raise ValueError("Missing GEMINI_API_KEY")
+        raise ValueError("Environment variable GEMINI_API_KEY Vercel par set nahi hai.")
 
     prompt = (
         f"You are an expert tutor for entrance exams (MDCAT and ECAT).\n"
-        f"Answer this question clearly and accurately: '{clean_query}'.\n"
-        "Provide core definitions, components/formulas, and high-yield exam traps.\n"
-        "Do not include filler greetings."
+        f"Explain: '{clean_query}' thoroughly.\n"
+        "Provide direct definitions, formulas or mechanisms, and high-yield exam traps.\n"
+        "No conversational greetings."
     )
-    payload = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
+    
+    payload = json.dumps({
+        "contents": [{"parts": [{"text": prompt}]}]
+    }).encode("utf-8")
 
-    # Endpoint permutations to handle modern keys
-    targets = [
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={urllib.parse.quote(api_key)}",
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={urllib.parse.quote(api_key)}"
-    ]
+    # Try both standard endpoints
+    models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-pro"]
+    last_error = ""
 
-    for target in targets:
+    for model in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
         try:
             req = urllib.request.Request(
-                target,
+                url,
                 data=payload,
-                headers={"Content-Type": "application/json", "x-goog-api-key": api_key}
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": api_key
+                }
             )
-            with urllib.request.urlopen(req, timeout=8) as resp:
+            with urllib.request.urlopen(req, timeout=12) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 return data["candidates"][0]["content"]["parts"][0]["text"]
-        except Exception:
-            continue
+        except urllib.error.HTTPError as he:
+            err_body = he.read().decode("utf-8")
+            last_error = f"Google API Error ({he.code}): {err_body}"
+        except Exception as ex:
+            last_error = str(ex)
 
-    raise RuntimeError("Gemini API calls failed")
+    raise RuntimeError(last_error)
 
-def generate_subject_aware_response(query: str, category: str) -> str:
+def generate_topic_specific_fallback(query: str, category: str) -> str:
     q = query.lower()
 
-    # BIOLOGY DOMAIN
-    if any(k in q for k in ["cell", "mitochondria", "organelle", "nucleus"]):
+    if "nuclear" in q:
         return (
-            "### Biology: The Fundamental Unit of Life (Cell)\n\n"
-            "**1. Definition & Cell Theory:**\n"
-            "The cell is the basic structural, functional, and biological unit of all known organisms.\n"
-            "* Proposed by Schleiden and Schwann (1838–1839); Rudolf Virchow added *Omnis cellula e cellula* (cells arise from pre-existing cells).\n\n"
-            "**2. Prokaryotic vs. Eukaryotic Distinctions:**\n"
-            "* **Prokaryotes (Bacteria):** Lack membrane-bound organelles; 70S ribosomes ($50S + 30S$ subunits); naked circular DNA in nucleoid.\n"
-            "* **Eukaryotes:** Membrane-bound nucleus, 80S ribosomes ($60S + 40S$ subunits), extensive compartmentalization.\n\n"
-            "**3. High-Yield MDCAT Exam Traps:**\n"
-            "*This screenshot shows an automated, "mad-libs" style template glitch on an ed-tech platform. Rather than providing actual educational content about a biological or electrochemical **cell**, the system has slotted the literal search query *"what is cell"* into a generic physics/math boilerplate template.
+            "### Nuclear Physics & Radioactivity\n\n"
+            "**1. Core Definition:**\n"
+            "Nuclear physics deals with the constituents, structure, behavior, and interactions of atomic nuclei.\n\n"
+            "**2. Governing Principles & Equations:**\n"
+            "* **Mass Defect & Binding Energy:** $\\Delta E = (\\Delta m) c^2$\n"
+            "* **Radioactive Decay Law:** $N = N_0 e^{-\\lambda t}$\n"
+            "* **Half-Life Formula:** $T_{1/2} = \\frac{\\ln 2}{\\lambda} \\approx \\frac{0.693}{\\lambda}$\n\n"
+            "**3. MDCAT/ECAT Traps:**\n"
+            "* $\\alpha$-decay decreases atomic number $Z$ by 2 and mass number $A$ by 4.\n"
+            "* $\\beta^-$-decay increases $Z$ by 1, leaving $A$ unchanged."
+        )
 
-**Signs of the Template Failure**
+    if "cell" in q:
+        return (
+            "### Cell Biology: The Unit of Life\n\n"
+            "**1. Core Definition:**\n"
+            "The cell is the basic structural and functional unit of all living organisms.\n\n"
+            "**2. Key Structural Components:**\n"
+            "* **Prokaryotic vs Eukaryotic:** Prokaryotes lack membrane-bound organelles and possess 70S ribosomes, whereas eukaryotes have 80S ribosomes and compartmentalized organelles.\n"
+            "* **Mitochondria:** Double-membraned organelle generating ATP via oxidative phosphorylation.\n\n"
+            "**3. MDCAT Exam Tip:**\n"
+            "* Plant cell walls consist of cellulose, fungal walls of chitin, and bacterial walls of peptidoglycan."
+        )
 
-* **Literal Query Injection:** Phrases like *"what is cell forms a vital foundation..."* and *"How does what is cell directly relate to core exam questions?"* indicate a placeholder variable like `{{query}}` was simply dropped into prewritten text.
-* **Mismatched Subject Matter:** A query about a "cell" generates tips for coordinate axes, boundary conditions, and calculus limits ($x \to 0$, $x \to \infty$).
-* **Irrelevant Call to Action:** The bottom action button prompts you to practice **Centripetal Force & Banking of Roads Questions**, completely detached from cells.
+    return (
+        f"### Conceptual Analysis: {query.title()}\n\n"
+        f"**1. High-Yield Definition for {category}:**\n"
+        f"In entrance test curriculum, **{query}** represents fundamental scientific principles evaluated through conceptual applications and quantitative dependencies.\n\n"
+        f"**2. Key Exam Strategy:**\n"
+        f"* Verify units, boundary conditions, and direct/inverse proportionalities.\n"
+        f"* Eliminate distractor options that violate conservation laws or dimensional balance."
+    )
 
-If you are looking for an actual definition depending on your subject:
+class QueryRequest(BaseModel):
+    topic: str
+    question: Optional[str] = None
+    category: str = "MDCAT"
 
-* **Biology:** The basic structural, functional, and biological unit of all known living organisms (the fundamental building block of life).
-* **Physics / Chemistry:** An electrochemical device capable of either generating electrical energy from chemical reactions (galvanic/voltaic cell) or using electrical energy to cause chemical reactions (electrolytic cell).
+class QuizRequest(BaseModel):
+    topic: str
+    category: str = "MDCAT"
+    start_index: int = 1
+
+@app.get("/")
+def home():
+    return {"status": "online"}
+
+@app.options("/ask")
+@app.options("/ask/")
+def options_ask():
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
+@app.post("/ask")
+@app.post("/ask/")
+def ask_tutor(req: QueryRequest):
+    user_query = req.question or req.topic
+    
+    clean_q = user_query
+    if 'Question: "' in clean_q:
+        clean_q = clean_q.split('Question: "')[1].split('"')[0]
+    elif "Question:" in clean_q:
+        clean_q = clean_q.split("Question:")[1].split(".")[0].strip()
+
+    try:
+        answer = call_gemini(clean_q)
+    except Exception as e:
+        # Fallback ke sath actual error bhi log/inspect hoga
+        print("Backend Error:", str(e))
+        answer = generate_topic_specific_fallback(clean_q, req.category)
+
+    return {
+        "status": "success",
+        "category": req.category,
+        "query": clean_q,
+        "answer": answer
+    }
+
+@app.post("/quiz")
+@app.post("/quiz/")
+def generate_quiz(req: QuizRequest):
+    return {
+        "status": "success",
+        "category": req.category,
+        "topic": req.topic,
+        "mcqs": []
+    }
+
+handler = Mangum(app)
