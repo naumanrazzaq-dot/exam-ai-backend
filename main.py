@@ -37,7 +37,7 @@ def call_gemini(clean_query: str) -> str:
         "contents": [{"parts": [{"text": prompt}]}]
     }).encode("utf-8")
 
-    # Target the active Gemini 3.6 Flash endpoint
+    # Working active endpoint
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={urllib.parse.quote(api_key)}"
 
     req = urllib.request.Request(
