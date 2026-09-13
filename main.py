@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 from mangum import Mangum
 
-app = FastAPI(title="MDCAT & ECAT AI Backend API", redirect_slashes=False)
+app = FastAPI(title="MDCAT & ECAT AI Backend API", redirectslashes=False)
 
 app.add_middleware(
     CORSMiddleware,
@@ -18,89 +18,103 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Comprehensive academic response engine
+# Robust Subject Knowledge Base for Entrance Exams
 KNOWLEDGE_BASE = {
+    "physics": (
+        "### Fundamentals of Physics\n\n"
+        "**1. Core Definition:**\n"
+        "Physics is the foundational branch of science concerned with the nature and properties of matter and energy. It explores mechanics, thermodynamics, electromagnetism, and modern physics.\n\n"
+        "**2. Essential Domains in Entrance Exams:**\n"
+        "* **Mechanics:** Vectors, Newton's Laws, Work, Energy, and Momentum conservation.\n"
+        "* **Electromagnetism:** Coulomb's law, electric fields, Gauss's law, and electromagnetic induction.\n\n"
+        "**3. High-Yield Exam Strategy:**\n"
+        "* Always check unit homogeneity and dimensional formulas ($[M^a L^b T^c]$) before selecting an option.\n"
+        "* Watch for vector vs scalar trap distinctions (e.g., velocity vs speed, work vs torque)."
+    ),
     "inertia": (
         "### Inertia in Classical Mechanics\n\n"
         "**1. Definition & Newton's First Law:**\n"
-        "Inertia is the inherent property of a body that resists any change in its state of rest or uniform motion in a straight line. It is quantified solely by the **mass** of the body.\n\n"
-        "**2. Governing Relations:**\n"
-        "* Measure of Inertia: $m \\text{ (Mass)}$\n"
-        "* Moment of Inertia (Rotational analogue): $I = \\sum m r^2$\n\n"
-        "**3. High-Yield Exam Pitfalls:**\n"
-        "* Inertia does not depend on velocity or acceleration; only on mass.\n"
-        "* Rotational inertia depends both on mass and the distribution of mass relative to the axis of rotation."
+        "Inertia is the inherent resistance of an object to any change in its velocity (either speed or direction). It is strictly measured by an object's **mass**.\n\n"
+        "**2. Governing Equations:**\n"
+        "* Linear Inertia: Measured solely by mass ($m$).\n"
+        "* Rotational Inertia: $I = \\sum m r^2$.\n\n"
+        "**3. Exam Pitfalls:**\n"
+        "* Inertia does NOT depend on speed, gravity, or applied force."
     ),
     "enzyme": (
         "### Enzymes: Biological Catalysts\n\n"
-        "**1. Core Biological Definition:**\n"
-        "Enzymes are globular proteins that accelerate biochemical reaction rates by lowering the activation energy ($E_a$) without undergoing permanent chemical changes.\n\n"
-        "**2. Key Characteristics & Kinetics:**\n"
-        "* **Active Site:** Specific 3D region where substrate binding occurs (Lock & Key / Induced Fit models).\n"
-        "* **Optimum Range:** Highly sensitive to thermal denaturation and pH variations.\n\n"
-        "**3. Entry Test Trap Points:**\n"
-        "* Enzymes alter reaction kinetics ($k$), but do NOT alter equilibrium constants ($K_{eq}$) or standard free energy change ($\\Delta G$)."
+        "**1. Definition & Function:**\n"
+        "Enzymes are specialized globular proteins that accelerate biological chemical reactions by lowering activation energy ($E_a$).\n\n"
+        "**2. Core Kinetics:**\n"
+        "* Active sites bind specific substrates following the Induced Fit Model.\n"
+        "* Rate depends on substrate concentration, temperature, and pH.\n\n"
+        "**3. Exam Pitfall:**\n"
+        "* Enzymes do not shift the chemical equilibrium ($K_{eq}$) or alter $\\Delta G$."
     ),
     "momentum": (
         "### Linear Momentum & Impulse\n\n"
-        "**1. Definition & Formulation:**\n"
-        "Momentum ($\\vec{p}$) measures the quantity of motion contained in an object, defined as the product of mass and linear velocity:\n"
-        "$$\\vec{p} = m \\cdot \\vec{v}$$\n\n"
-        "**2. Conservation & SI Units:**\n"
-        "* SI Unit: $\\text{kg}\\cdot\\text{m/s}$ or $\\text{N}\\cdot\\text{s}$\n"
-        "* Conservation Principle: In an isolated system ($\\Sigma \\vec{F}_{ext} = 0$), total linear momentum is strictly conserved.\n\n"
-        "**3. High-Yield Pitfall:**\n"
-        "* Momentum is a vector quantity; direction changes produce non-zero impulse even if scalar speed is constant."
+        "**1. Formulation:**\n"
+        "Linear momentum is the measure of motion: $p = m \\cdot v$.\n\n"
+        "**2. Conservation Principle:**\n"
+        "* Total momentum remains conserved in isolated systems: $\\sum p_{initial} = \\sum p_{final}$.\n"
+        "* Impulse: $J = \\Delta p = F_{net} \\cdot \\Delta t$.\n\n"
+        "**3. Exam Pitfall:**\n"
+        "* In elastic collisions, both kinetic energy and momentum are conserved; in inelastic collisions, only momentum is conserved."
+    ),
+    "environment": (
+        "### Ecology & Environmental Factors\n\n"
+        "**1. Definition:**\n"
+        "The environment encompasses all surrounding abiotic (non-living) and biotic (living) factors interacting with organisms.\n\n"
+        "**2. Key Ecological Hierarchy:**\n"
+        "* Organism $\\rightarrow$ Population $\\rightarrow$ Community $\\rightarrow$ Ecosystem $\\rightarrow$ Biosphere.\n\n"
+        "**3. High-Yield Tip:**\n"
+        "* Distinguish between Habitat (address) and Niche (functional profession of the species)."
     ),
     "mdcat": (
-        "### Medical and Dental College Admission Test (MDCAT)\n\n"
-        "**Overview:**\n"
-        "MDCAT stands for the **Medical & Dental College Admission Test**, the standardized examination required for admission into MBBS and BDS programs across Pakistan.\n\n"
-        "**Core Subject Distribution:**\n"
-        "* Biology (Highest weightage)\n"
-        "* Chemistry & Physics (Conceptual & numerical focus)\n"
-        "* English & Logical Reasoning"
+        "### Medical & Dental College Admission Test (MDCAT)\n\n"
+        "**Structure & Focus:**\n"
+        "MDCAT tests conceptual mastery across Biology, Chemistry, Physics, English, and Logical Reasoning.\n\n"
+        "**Strategy:**\n"
+        "* Prioritize biological diagrams, classification systems, and organic reaction mechanisms."
+    ),
+    "ecat": (
+        "### Engineering College Admission Test (ECAT)\n\n"
+        "**Structure & Focus:**\n"
+        "ECAT evaluates analytical problem solving in Mathematics, Physics, Chemistry/Computer Science, and English.\n\n"
+        "**Strategy:**\n"
+        "* Focus on shortcut calculations, calculus fundamentals, vectors, and mechanics."
     )
 }
 
 def call_gemini(clean_query: str) -> str:
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
-        raise ValueError("No API Key configured")
-
-    prompt = (
-        f"You are a subject tutor for entrance exams (MDCAT/ECAT).\n"
-        f"Explain: '{clean_query}'.\n"
-        "Provide direct definitions, formulas, and high-yield exam traps without greetings."
-    )
-    payload = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
-
-    # Header-based request
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-    req = urllib.request.Request(
-        url,
-        data=payload,
-        headers={"Content-Type": "application/json", "x-goog-api-key": api_key}
-    )
-    with urllib.request.urlopen(req, timeout=10) as resp:
+        raise ValueError("Missing API key")
+    
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={urllib.parse.quote(api_key)}"
+    payload = json.dumps({
+        "contents": [{"parts": [{"text": f"Explain this entry test topic clearly with definitions, formulas, and pitfalls: {clean_query}"}]}]
+    }).encode("utf-8")
+    
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=8) as resp:
         data = json.loads(resp.read().decode("utf-8"))
         return data["candidates"][0]["content"]["parts"][0]["text"]
 
-def generate_intelligent_academic_response(query: str, category: str) -> str:
-    q_lower = query.lower()
-    for key, text in KNOWLEDGE_BASE.items():
+def generate_smart_response(clean_q: str, category: str) -> str:
+    q_lower = clean_q.lower()
+    for key, content in KNOWLEDGE_BASE.items():
         if key in q_lower:
-            return text
+            return content
 
-    # Standard high-yield response generator
     return (
-        f"### Conceptual Analysis: {query.title()}\n\n"
-        f"**1. Core Definition for {category}:**\n"
-        f"In entrance exam sciences, **{query}** represents fundamental physical or biological principles governed by standard laws.\n\n"
-        "**2. Essential Exam Strategy:**\n"
-        "* Verify dimensional consistency and convert given values into standard SI base units prior to computation.\n"
-        "* Distinguish direct versus inverse proportionalities to eliminate distractor choices quickly.\n"
-        "* Relate this concept back to fundamental conservation laws tested in the curriculum."
+        f"### Conceptual Breakdown: {clean_q.title()}\n\n"
+        f"**1. Core Principles & Definition:**\n"
+        f"In entrance exam science, **{clean_q}** forms a vital foundation for conceptual evaluation. It describes fundamental physical, biological, or quantitative behaviors governed by established theoretical principles.\n\n"
+        f"**2. Essential Exam Strategy:**\n"
+        f"* Verify boundary conditions, coordinate axes, and standard SI units.\n"
+        f"* Track direct vs. inverse proportional relationships between variables to eliminate distractor options quickly.\n"
+        f"* Test limiting cases (e.g., $x \\to 0$ or $x \\to \\infty$) to confirm mathematical consistency."
     )
 
 class QueryRequest(BaseModel):
@@ -115,7 +129,7 @@ class QuizRequest(BaseModel):
 
 @app.get("/")
 def home():
-    return {"status": "online", "message": "API is active"}
+    return {"status": "online"}
 
 @app.options("/ask")
 @app.options("/ask/")
@@ -143,7 +157,7 @@ def ask_tutor(req: QueryRequest):
     try:
         answer = call_gemini(clean_q)
     except Exception:
-        answer = generate_intelligent_academic_response(clean_q, req.category)
+        answer = generate_smart_response(clean_q, req.category)
 
     return {
         "status": "success",
