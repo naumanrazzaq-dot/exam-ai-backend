@@ -1,7 +1,6 @@
 import os
 import json
 import urllib.request
-import urllib.parse
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -21,18 +20,16 @@ app.add_middleware(
 def call_gemini(clean_query: str) -> str:
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
-        raise ValueError("Missing API key")
+        raise ValueError("Missing GEMINI_API_KEY environment variable")
     
-    # Clean query and URL encode key
-    clean_key = urllib.parse.quote(api_key)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={clean_key}"
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
     
     prompt = (
-        f"You are a friendly, highly intelligent entry test (MDCAT & ECAT) AI tutor.\n"
-        f"The student asked: '{clean_query}'.\n\n"
-        "Provide a clear, accurate, and comprehensive explanation tailored for entry test students.\n"
-        "Format the answer nicely with Markdown bullets, key definitions, real-world examples/functions, and high-yield exam takeaways.\n"
-        "Do not include generic filler greetings. Answer directly with high quality."
+        f"You are an expert entrance exam AI tutor for MDCAT and ECAT preparation.\n"
+        f"A student asked: '{clean_query}'.\n\n"
+        "Provide a clear, accurate, and structured explanation tailored for pre-medical and pre-engineering entrance exams.\n"
+        "Include concise core definitions, governing formulas or biological mechanisms, and high-yield exam takeaways.\n"
+        "Do not include conversational filler greetings (like Assalam-o-Alaikum or Hello). Start directly with the answer."
     )
     
     payload = {
@@ -41,10 +38,16 @@ def call_gemini(clean_query: str) -> str:
         }]
     }
     
+    # Modern Google AI Studio keys (starting with AQ.) require the x-goog-api-key header
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": api_key
+    }
+    
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"}
+        headers=headers
     )
     with urllib.request.urlopen(req, timeout=25) as resp:
         data = json.loads(resp.read().decode("utf-8"))
@@ -62,7 +65,7 @@ class QuizRequest(BaseModel):
 
 @app.get("/")
 def home():
-    return {"status": "online", "message": "General AI Backend is running"}
+    return {"status": "online", "message": "General AI Backend is running 24/7"}
 
 @app.options("/ask")
 @app.options("/ask/")
@@ -81,7 +84,7 @@ def options_ask():
 def ask_tutor(req: QueryRequest):
     user_query = req.question or req.topic
     
-    # Strip any extra boilerplate if sent from client
+    # Clean query if full sentence wrappers were passed
     clean_q = user_query
     if 'Question: "' in clean_q:
         clean_q = clean_q.split('Question: "')[1].split('"')[0]
@@ -92,15 +95,13 @@ def ask_tutor(req: QueryRequest):
         answer = call_gemini(clean_q)
     except Exception as e:
         print("Gemini API Error:", str(e))
-        # Direct accurate fallback for biological/physical questions
         answer = (
-            f"### Overview: {clean_q.capitalize()}\n\n"
-            f"**Definition:**\n"
-            f"In entry test sciences, **{clean_q}** refers to vital chemical or physical mechanisms essential for biological metabolism or mechanical systems.\n\n"
-            f"**Key Functions & Characteristics:**\n"
-            f"* Catalytic efficiency and operational parameters.\n"
-            f"* Sensitivity to pH, temperature, and specific substrate concentrations.\n\n"
-            f"**High-Yield Exam Strategy:** Always remember the activation energy reduction mechanism and specific active-site models tested in MDCAT/ECAT."
+            f"### Conceptual Summary: {clean_q.capitalize()}\n\n"
+            f"**Core Principle:**\n"
+            f"In {req.category} entrance exam curriculum, **{clean_q}** covers standard physical, biological, or chemical principles.\n\n"
+            f"**Key High-Yield Pointers:**\n"
+            f"* Verify dependencies, governing conditions, and unit analysis.\n"
+            f"* Distinguish between direct vs inverse proportionalities before evaluating options."
         )
 
     return {
