@@ -1,6 +1,7 @@
 import os
 import json
 import urllib.request
+import urllib.parse
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -18,43 +19,41 @@ app.add_middleware(
 )
 
 def call_gemini(clean_query: str) -> str:
-    raw_keys = os.getenv("GEMINI_API_KEY", "").strip()
-    if not raw_keys:
-        raise ValueError("GEMINI_API_KEY is not set")
-    
-    # Split comma-separated keys for auto-failover
-    api_keys = [k.strip() for k in raw_keys.split(",") if k.strip()]
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY environment variable missing in Vercel")
+
+    # Handle comma-separated keys if provided
+    keys = [k.strip() for k in api_key.split(",") if k.strip()]
+    active_key = keys[0]
 
     prompt = (
-        f"You are an expert AI tutor for entrance exams (MDCAT & ECAT).\n"
-        f"Question: '{clean_query}'.\n\n"
-        "Provide a high-yield, structured conceptual answer with definitions, governing formulas/principles, and exam pitfalls.\n"
-        "Do not include conversational greetings. Answer directly."
+        f"You are an expert entrance exam AI tutor for MDCAT and ECAT.\n"
+        f"Student Question: '{clean_query}'.\n\n"
+        "Provide a detailed, accurate conceptual breakdown tailored for exam preparation.\n"
+        "Include core definitions, fundamental formulas/principles, and common trap points.\n"
+        "Answer directly without greetings."
     )
-    payload = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
 
-    models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
-    
-    # Round-robin through all available keys and models
-    for key in api_keys:
-        for model in models:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-            req = urllib.request.Request(
-                url,
-                data=payload,
-                headers={
-                    "Content-Type": "application/json",
-                    "x-goog-api-key": key
-                }
-            )
-            try:
-                with urllib.request.urlopen(req, timeout=12) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    return data["candidates"][0]["content"]["parts"][0]["text"]
-            except Exception:
-                continue
+    payload = json.dumps({
+        "contents": [{"parts": [{"text": prompt}]}]
+    }).encode("utf-8")
 
-    raise RuntimeError("All configured API keys and models exhausted.")
+    # Direct v1 endpoint with URL parameter and x-goog-api-key header
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={urllib.parse.quote(active_key)}"
+
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "x-goog-api-key": active_key
+        }
+    )
+
+    with urllib.request.urlopen(req, timeout=12) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+        return data["candidates"][0]["content"]["parts"][0]["text"]
 
 class QueryRequest(BaseModel):
     topic: str
@@ -86,7 +85,7 @@ def options_ask():
 @app.post("/ask/")
 def ask_tutor(req: QueryRequest):
     user_query = req.question or req.topic
-    
+
     clean_q = user_query
     if 'Question: "' in clean_q:
         clean_q = clean_q.split('Question: "')[1].split('"')[0]
@@ -95,15 +94,20 @@ def ask_tutor(req: QueryRequest):
 
     try:
         answer = call_gemini(clean_q)
-    except Exception as e:
-        print("Failover activated:", str(e))
+    except urllib.error.HTTPError as he:
+        # Read exact response from Google to identify blockage
+        err_msg = he.read().decode("utf-8")
+        print("Google HTTP Error:", err_msg)
         answer = (
-            f"### Conceptual Summary: {clean_q.title()}\n\n"
-            f"**1. Core Principles:**\n"
-            f"In {req.category} entrance exam preparation, **{clean_q}** represents a fundamental topic evaluated across conceptual and analytical applications.\n\n"
-            f"**2. High-Yield Exam Strategy:**\n"
-            f"* Verify dependencies, base SI units, and boundary conditions before answering.\n"
-            f"* Eliminate answer choices that violate direct or inverse proportionalities."
+            f"### API Key Verification Notice\n\n"
+            f"Google Gemini rejected the key with status **{he.code}**.\n\n"
+            f"**Google Response:** `{err_msg[:250]}`"
+        )
+    except Exception as e:
+        print("Call Error:", str(e))
+        answer = (
+            f"### Service Notice\n\n"
+            f"Unable to connect to Gemini API: `{str(e)}`"
         )
 
     return {
