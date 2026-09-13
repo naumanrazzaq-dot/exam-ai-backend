@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 from google import genai
+from google.genai import types
 from supabase import create_client
 from mangum import Mangum
 
@@ -19,7 +20,6 @@ gemini_client = genai.Client(api_key=api_key)
 
 app = FastAPI(title="MDCAT & ECAT AI Backend API")
 
-# Explicit origins + regex allows any vercel domain or localhost without breaking credentials
 origins = [
     "https://crackitai-sepia.vercel.app",
     "http://localhost:3000",
@@ -68,7 +68,7 @@ def home():
     return {"status": "online", "message": "Backend is running 24/7"}
 
 @app.post("/ask")
-async def ask_tutor(req: QueryRequest):
+def ask_tutor(req: QueryRequest):
     user_query = req.question or req.topic
     context = get_context(req.topic, req.category)
     prompt = (
@@ -79,7 +79,15 @@ async def ask_tutor(req: QueryRequest):
         f"Question:\n{user_query}\n\n"
         "Answer:"
     )
-    res = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
+    
+    # Pure text generation without tool/AFC interference
+    res = gemini_client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.7
+        )
+    )
     return {
         "status": "success",
         "category": req.category,
@@ -88,7 +96,7 @@ async def ask_tutor(req: QueryRequest):
     }
 
 @app.post("/quiz")
-async def generate_quiz(req: QuizRequest):
+def generate_quiz(req: QuizRequest):
     context = get_context(req.topic, req.category)
     prompt = (
         f"You are an entry test examiner for {req.category}.\n"
@@ -107,7 +115,13 @@ async def generate_quiz(req: QuizRequest):
         "]\n\n"
         f"Context:\n{context}"
     )
-    res = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
+    res = gemini_client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.4
+        )
+    )
     raw = res.text.strip()
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[1].rsplit("\n", 1)[0]
