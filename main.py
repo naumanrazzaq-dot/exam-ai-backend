@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 from mangum import Mangum
 
-app = FastAPI(title="MDCAT & ECAT AI Backend API", redirectslashes=False)
+app = FastAPI(title="MDCAT & ECAT AI Backend API", redirect_slashes=False)
 
 app.add_middleware(
     CORSMiddleware,
@@ -18,162 +18,63 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Robust Subject Knowledge Base for Entrance Exams
-KNOWLEDGE_BASE = {
-    "physics": (
-        "### Fundamentals of Physics\n\n"
-        "**1. Core Definition:**\n"
-        "Physics is the foundational branch of science concerned with the nature and properties of matter and energy. It explores mechanics, thermodynamics, electromagnetism, and modern physics.\n\n"
-        "**2. Essential Domains in Entrance Exams:**\n"
-        "* **Mechanics:** Vectors, Newton's Laws, Work, Energy, and Momentum conservation.\n"
-        "* **Electromagnetism:** Coulomb's law, electric fields, Gauss's law, and electromagnetic induction.\n\n"
-        "**3. High-Yield Exam Strategy:**\n"
-        "* Always check unit homogeneity and dimensional formulas ($[M^a L^b T^c]$) before selecting an option.\n"
-        "* Watch for vector vs scalar trap distinctions (e.g., velocity vs speed, work vs torque)."
-    ),
-    "inertia": (
-        "### Inertia in Classical Mechanics\n\n"
-        "**1. Definition & Newton's First Law:**\n"
-        "Inertia is the inherent resistance of an object to any change in its velocity (either speed or direction). It is strictly measured by an object's **mass**.\n\n"
-        "**2. Governing Equations:**\n"
-        "* Linear Inertia: Measured solely by mass ($m$).\n"
-        "* Rotational Inertia: $I = \\sum m r^2$.\n\n"
-        "**3. Exam Pitfalls:**\n"
-        "* Inertia does NOT depend on speed, gravity, or applied force."
-    ),
-    "enzyme": (
-        "### Enzymes: Biological Catalysts\n\n"
-        "**1. Definition & Function:**\n"
-        "Enzymes are specialized globular proteins that accelerate biological chemical reactions by lowering activation energy ($E_a$).\n\n"
-        "**2. Core Kinetics:**\n"
-        "* Active sites bind specific substrates following the Induced Fit Model.\n"
-        "* Rate depends on substrate concentration, temperature, and pH.\n\n"
-        "**3. Exam Pitfall:**\n"
-        "* Enzymes do not shift the chemical equilibrium ($K_{eq}$) or alter $\\Delta G$."
-    ),
-    "momentum": (
-        "### Linear Momentum & Impulse\n\n"
-        "**1. Formulation:**\n"
-        "Linear momentum is the measure of motion: $p = m \\cdot v$.\n\n"
-        "**2. Conservation Principle:**\n"
-        "* Total momentum remains conserved in isolated systems: $\\sum p_{initial} = \\sum p_{final}$.\n"
-        "* Impulse: $J = \\Delta p = F_{net} \\cdot \\Delta t$.\n\n"
-        "**3. Exam Pitfall:**\n"
-        "* In elastic collisions, both kinetic energy and momentum are conserved; in inelastic collisions, only momentum is conserved."
-    ),
-    "environment": (
-        "### Ecology & Environmental Factors\n\n"
-        "**1. Definition:**\n"
-        "The environment encompasses all surrounding abiotic (non-living) and biotic (living) factors interacting with organisms.\n\n"
-        "**2. Key Ecological Hierarchy:**\n"
-        "* Organism $\\rightarrow$ Population $\\rightarrow$ Community $\\rightarrow$ Ecosystem $\\rightarrow$ Biosphere.\n\n"
-        "**3. High-Yield Tip:**\n"
-        "* Distinguish between Habitat (address) and Niche (functional profession of the species)."
-    ),
-    "mdcat": (
-        "### Medical & Dental College Admission Test (MDCAT)\n\n"
-        "**Structure & Focus:**\n"
-        "MDCAT tests conceptual mastery across Biology, Chemistry, Physics, English, and Logical Reasoning.\n\n"
-        "**Strategy:**\n"
-        "* Prioritize biological diagrams, classification systems, and organic reaction mechanisms."
-    ),
-    "ecat": (
-        "### Engineering College Admission Test (ECAT)\n\n"
-        "**Structure & Focus:**\n"
-        "ECAT evaluates analytical problem solving in Mathematics, Physics, Chemistry/Computer Science, and English.\n\n"
-        "**Strategy:**\n"
-        "* Focus on shortcut calculations, calculus fundamentals, vectors, and mechanics."
-    )
-}
-
 def call_gemini(clean_query: str) -> str:
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
-        raise ValueError("Missing API key")
-    
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={urllib.parse.quote(api_key)}"
-    payload = json.dumps({
-        "contents": [{"parts": [{"text": f"Explain this entry test topic clearly with definitions, formulas, and pitfalls: {clean_query}"}]}]
-    }).encode("utf-8")
-    
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=8) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-        return data["candidates"][0]["content"]["parts"][0]["text"]
+        raise ValueError("Missing GEMINI_API_KEY")
 
-def generate_smart_response(clean_q: str, category: str) -> str:
-    q_lower = clean_q.lower()
-    for key, content in KNOWLEDGE_BASE.items():
-        if key in q_lower:
-            return content
-
-    return (
-        f"### Conceptual Breakdown: {clean_q.title()}\n\n"
-        f"**1. Core Principles & Definition:**\n"
-        f"In entrance exam science, **{clean_q}** forms a vital foundation for conceptual evaluation. It describes fundamental physical, biological, or quantitative behaviors governed by established theoretical principles.\n\n"
-        f"**2. Essential Exam Strategy:**\n"
-        f"* Verify boundary conditions, coordinate axes, and standard SI units.\n"
-        f"* Track direct vs. inverse proportional relationships between variables to eliminate distractor options quickly.\n"
-        f"* Test limiting cases (e.g., $x \\to 0$ or $x \\to \\infty$) to confirm mathematical consistency."
+    prompt = (
+        f"You are an expert tutor for entrance exams (MDCAT and ECAT).\n"
+        f"Answer this question clearly and accurately: '{clean_query}'.\n"
+        "Provide core definitions, components/formulas, and high-yield exam traps.\n"
+        "Do not include filler greetings."
     )
+    payload = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
 
-class QueryRequest(BaseModel):
-    topic: str
-    question: Optional[str] = None
-    category: str = "MDCAT"
+    # Endpoint permutations to handle modern keys
+    targets = [
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={urllib.parse.quote(api_key)}",
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={urllib.parse.quote(api_key)}"
+    ]
 
-class QuizRequest(BaseModel):
-    topic: str
-    category: str = "MDCAT"
-    start_index: int = 1
+    for target in targets:
+        try:
+            req = urllib.request.Request(
+                target,
+                data=payload,
+                headers={"Content-Type": "application/json", "x-goog-api-key": api_key}
+            )
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception:
+            continue
 
-@app.get("/")
-def home():
-    return {"status": "online"}
+    raise RuntimeError("Gemini API calls failed")
 
-@app.options("/ask")
-@app.options("/ask/")
-def options_ask():
-    return Response(
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-        }
-    )
+def generate_subject_aware_response(query: str, category: str) -> str:
+    q = query.lower()
 
-@app.post("/ask")
-@app.post("/ask/")
-def ask_tutor(req: QueryRequest):
-    user_query = req.question or req.topic
-    
-    clean_q = user_query
-    if 'Question: "' in clean_q:
-        clean_q = clean_q.split('Question: "')[1].split('"')[0]
-    elif "Question:" in clean_q:
-        clean_q = clean_q.split("Question:")[1].split(".")[0].strip()
+    # BIOLOGY DOMAIN
+    if any(k in q for k in ["cell", "mitochondria", "organelle", "nucleus"]):
+        return (
+            "### Biology: The Fundamental Unit of Life (Cell)\n\n"
+            "**1. Definition & Cell Theory:**\n"
+            "The cell is the basic structural, functional, and biological unit of all known organisms.\n"
+            "* Proposed by Schleiden and Schwann (1838–1839); Rudolf Virchow added *Omnis cellula e cellula* (cells arise from pre-existing cells).\n\n"
+            "**2. Prokaryotic vs. Eukaryotic Distinctions:**\n"
+            "* **Prokaryotes (Bacteria):** Lack membrane-bound organelles; 70S ribosomes ($50S + 30S$ subunits); naked circular DNA in nucleoid.\n"
+            "* **Eukaryotes:** Membrane-bound nucleus, 80S ribosomes ($60S + 40S$ subunits), extensive compartmentalization.\n\n"
+            "**3. High-Yield MDCAT Exam Traps:**\n"
+            "*This screenshot shows an automated, "mad-libs" style template glitch on an ed-tech platform. Rather than providing actual educational content about a biological or electrochemical **cell**, the system has slotted the literal search query *"what is cell"* into a generic physics/math boilerplate template.
 
-    try:
-        answer = call_gemini(clean_q)
-    except Exception:
-        answer = generate_smart_response(clean_q, req.category)
+**Signs of the Template Failure**
 
-    return {
-        "status": "success",
-        "category": req.category,
-        "query": clean_q,
-        "answer": answer
-    }
+* **Literal Query Injection:** Phrases like *"what is cell forms a vital foundation..."* and *"How does what is cell directly relate to core exam questions?"* indicate a placeholder variable like `{{query}}` was simply dropped into prewritten text.
+* **Mismatched Subject Matter:** A query about a "cell" generates tips for coordinate axes, boundary conditions, and calculus limits ($x \to 0$, $x \to \infty$).
+* **Irrelevant Call to Action:** The bottom action button prompts you to practice **Centripetal Force & Banking of Roads Questions**, completely detached from cells.
 
-@app.post("/quiz")
-@app.post("/quiz/")
-def generate_quiz(req: QuizRequest):
-    return {
-        "status": "success",
-        "category": req.category,
-        "topic": req.topic,
-        "mcqs": []
-    }
+If you are looking for an actual definition depending on your subject:
 
-handler = Mangum(app)
+* **Biology:** The basic structural, functional, and biological unit of all known living organisms (the fundamental building block of life).
+* **Physics / Chemistry:** An electrochemical device capable of either generating electrical energy from chemical reactions (galvanic/voltaic cell) or using electrical energy to cause chemical reactions (electrolytic cell).
