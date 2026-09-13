@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from typing import Optional
 from google import genai
 from supabase import create_client
+from mangum import Mangum
 
 sb_url = os.getenv("SUPABASE_URL", "https://iiussffgjberpcyfyigf.supabase.co")
 sb_key = os.getenv("SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlpdXNzZmZnamJlcnBjeWZ5aWdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMzAyOTQsImV4cCI6MjEwNDYwNjI5NH0.UHvSX8zOEj27An3ds4WsBkmxSV16ynjuvfGCNqM92D8")
@@ -18,9 +19,17 @@ gemini_client = genai.Client(api_key=api_key)
 
 app = FastAPI(title="MDCAT & ECAT AI Backend API")
 
+# Explicit origins + regex allows any vercel domain or localhost without breaking credentials
+origins = [
+    "https://crackitai-sepia.vercel.app",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -114,3 +123,5 @@ async def generate_quiz(req: QuizRequest):
         "topic": req.topic,
         "mcqs": mcqs_data
     }
+
+handler = Mangum(app)
