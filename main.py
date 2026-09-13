@@ -9,8 +9,16 @@ from pydantic import BaseModel
 from typing import Optional
 from mangum import Mangum
 
+# Supabase Credentials
+sb_url = os.getenv("SUPABASE_URL", "https://iiussffgjberpcyfyigf.supabase.co")
+sb_key = os.getenv(
+    "SUPABASE_ANON_KEY",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlpdXNzZmZnamJlcnBjeWZ5aWdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMzAyOTQsImV4cCI6MjEwNDYwNjI5NH0.UHvSX8zOEj27An3ds4WsBkmxSV16ynjuvfGCNqM92D8"
+)
+
 app = FastAPI(title="MDCAT & ECAT AI Backend API", redirect_slashes=False)
 
+# Comprehensive CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -28,8 +36,6 @@ def generate_vector(text: str, dim: int = 768):
 def get_context(topic: str, category: str):
     try:
         from supabase import create_client
-        sb_url = os.getenv("SUPABASE_URL", "https://iiussffgjberpcyfyigf.supabase.co")
-        sb_key = os.getenv("SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlpdXNzZmZnamJlcnBjeWZ5aWdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMzAyOTQsImV4cCI6MjEwNDYwNjI5NH0.UHvSX8zOEj27An3ds4WsBkmxSV16ynjuvfGCNqM92D8")
         supabase = create_client(sb_url, sb_key)
         q_vec = generate_vector(topic)
         res = supabase.rpc("match_documents", {
@@ -44,16 +50,22 @@ def get_context(topic: str, category: str):
 def call_gemini(prompt: str) -> str:
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
-        raise ValueError("Missing key")
+        raise ValueError("GEMINI_API_KEY environment variable is not configured")
+    
     clean_key = urllib.parse.quote(api_key)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={clean_key}"
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    # Using Gemini 1.5 Flash endpoint
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={clean_key}"
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"}
     )
-    with urllib.request.urlopen(req, timeout=12) as resp:
+    with urllib.request.urlopen(req, timeout=15) as resp:
         data = json.loads(resp.read().decode("utf-8"))
         return data["candidates"][0]["content"]["parts"][0]["text"]
 
@@ -92,18 +104,20 @@ def ask_tutor(req: QueryRequest):
         prompt = (
             f"You are an expert entrance exam tutor for {req.category}.\n"
             f"The student asked: '{user_query}'.\n"
-            "Provide a high-yield, clear, structured conceptual explanation for exam preparation.\n\n"
+            "Provide a concise, high-yield, structured conceptual explanation for exam preparation.\n"
+            "Include key definitions, governing formulas, and common exam pitfalls.\n\n"
             f"Context:\n{context}\n\n"
             f"Question:\n{user_query}\n\n"
             "Answer:"
         )
         answer = call_gemini(prompt)
-    except Exception:
+    except Exception as e:
+        print("Live Gemini call error:", str(e))
         answer = (
-            f"### Conceptual Summary: {req.topic}\n\n"
-            f"* **Core Concept:** {user_query} is a fundamental topic in {req.category}.\n"
-            "* **Formula & Principle:** Always check boundary relations, equations, and dimensional consistency.\n"
-            "* **Exam Strategy:** Verify SI base units and eliminate trap options before solving."
+            f"### Conceptual Breakdown: {req.topic}\n\n"
+            f"* **Core Concept:** {user_query} governs physical and scientific behavior evaluated heavily in {req.category}.\n"
+            "* **Standard Relations & SI Units:** Always confirm fundamental base units and identify direct vs inverse proportionalities.\n"
+            "* **Exam Tip:** Eliminate answer options that violate dimensional analysis before evaluating numeric calculations."
         )
 
     return {
@@ -120,8 +134,19 @@ def generate_quiz(req: QuizRequest):
         context = get_context(req.topic, req.category)
         prompt = (
             f"You are an entry test examiner for {req.category}.\n"
-            f"Generate 3 fresh conceptual MCQs for: '{req.topic}' starting at index #{req.start_index}.\n"
-            "Return strictly a valid JSON array of objects without markdown."
+            f"Generate 3 fresh conceptual MCQs for topic: '{req.topic}' starting at index #{req.start_index}.\n"
+            "Return strictly a valid JSON array of objects without markdown formatting or code blocks.\n"
+            "Ensure 'correct_letter' is exactly one of: 'A', 'B', 'C', or 'D'.\n"
+            "Schema:\n"
+            "[\n"
+            "  {\n"
+            '    "question": "Question text",\n'
+            '    "options": ["Option text A", "Option text B", "Option text C", "Option text D"],\n'
+            '    "correct_letter": "A",\n'
+            '    "explanation": "Detailed explanation."\n'
+            "  }\n"
+            "]\n\n"
+            f"Context:\n{context}"
         )
         raw = call_gemini(prompt).strip()
         if raw.startswith("```"):
