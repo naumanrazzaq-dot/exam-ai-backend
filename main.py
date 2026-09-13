@@ -1,7 +1,6 @@
 import os
 import json
 import urllib.request
-import urllib.parse
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -19,46 +18,43 @@ app.add_middleware(
 )
 
 def call_gemini(clean_query: str) -> str:
-    # Multiple keys comma-separated ya fallback keys
     raw_keys = os.getenv("GEMINI_API_KEY", "").strip()
     if not raw_keys:
-        raise ValueError("Missing GEMINI_API_KEY")
+        raise ValueError("GEMINI_API_KEY is not set")
     
-    # Comma-separated keys support agar aap ek se zyada keys dalein
+    # Split comma-separated keys for auto-failover
     api_keys = [k.strip() for k in raw_keys.split(",") if k.strip()]
 
     prompt = (
-        f"You are an expert entrance exam AI tutor for MDCAT and ECAT preparation.\n"
-        f"The student asked: '{clean_query}'.\n\n"
-        "Provide a clear, accurate, high-yield conceptual breakdown for entrance test students.\n"
-        "Include concise core definitions, governing formulas/principles, and critical trap points.\n"
-        "Do not include conversational greetings. Answer directly with structured markdown."
+        f"You are an expert AI tutor for entrance exams (MDCAT & ECAT).\n"
+        f"Question: '{clean_query}'.\n\n"
+        "Provide a high-yield, structured conceptual answer with definitions, governing formulas/principles, and exam pitfalls.\n"
+        "Do not include conversational greetings. Answer directly."
     )
     payload = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
 
     models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
-    last_err = None
-
+    
+    # Round-robin through all available keys and models
     for key in api_keys:
         for model in models:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+            req = urllib.request.Request(
+                url,
+                data=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": key
+                }
+            )
             try:
-                req = urllib.request.Request(
-                    url,
-                    data=payload,
-                    headers={
-                        "Content-Type": "application/json",
-                        "x-goog-api-key": key
-                    }
-                )
-                with urllib.request.urlopen(req, timeout=10) as resp:
+                with urllib.request.urlopen(req, timeout=12) as resp:
                     data = json.loads(resp.read().decode("utf-8"))
                     return data["candidates"][0]["content"]["parts"][0]["text"]
-            except Exception as e:
-                last_err = e
-                continue  # Rate limit ya error aate hi agli model/key par jump karega
+            except Exception:
+                continue
 
-    raise RuntimeError(f"All API attempts exhausted: {last_err}")
+    raise RuntimeError("All configured API keys and models exhausted.")
 
 class QueryRequest(BaseModel):
     topic: str
@@ -100,15 +96,14 @@ def ask_tutor(req: QueryRequest):
     try:
         answer = call_gemini(clean_q)
     except Exception as e:
-        print("Gemini Exhausted Error:", str(e))
-        # Direct educational explanation if rate limits block momentarily
+        print("Failover activated:", str(e))
         answer = (
-            f"### High-Yield Concept: {clean_q.title()}\n\n"
-            f"**1. Examination Principle:**\n"
-            f"In {req.category} testing, **{clean_q}** requires evaluation of primary scientific principles, governing parameters, and dimensional dependencies.\n\n"
-            f"**2. Problem Solving Traps:**\n"
-            f"* Always convert non-standard units to SI base units before calculation.\n"
-            f"* Identify direct and inverse relationships to discard distractor options immediately."
+            f"### Conceptual Summary: {clean_q.title()}\n\n"
+            f"**1. Core Principles:**\n"
+            f"In {req.category} entrance exam preparation, **{clean_q}** represents a fundamental topic evaluated across conceptual and analytical applications.\n\n"
+            f"**2. High-Yield Exam Strategy:**\n"
+            f"* Verify dependencies, base SI units, and boundary conditions before answering.\n"
+            f"* Eliminate answer choices that violate direct or inverse proportionalities."
         )
 
     return {
